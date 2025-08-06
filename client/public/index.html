@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Spades - Main Menu</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/themes.css" />
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <div class="menu-container">
+    <h1>♠ Spades Game ♠</h1>
+    
+    <section class="game-mode">
+      <h2>Select Game Mode</h2>
+      <button id="singleplayerBtn" class="btn">Singleplayer vs AI</button>
+      <button id="multiplayerBtn" class="btn">Online Multiplayer</button>
+    </section>
+
+    <section id="multiplayerOptions" class="hidden">
+      <h3>Multiplayer Options</h3>
+      <input id="playerName" type="text" placeholder="Enter your name" />
+      <div class="room-options">
+        <button id="createRoomBtn" class="btn">Create Room</button>
+        <input id="roomId" type="text" placeholder="Room ID" />
+        <button id="joinRoomBtn" class="btn">Join Room</button>
+      </div>
+    </section>
+
+    <section class="rules">
+      <h2>Game Rules</h2>
+      <p>
+        Spades is a 4-player trick-taking game with two teams (Players 1 & 3 vs Players 2 & 4). 
+        Each player bids how many tricks they expect to win. 
+        Spades are trump, and you must follow suit if possible. 
+        Points are earned based on successful bids, bags (overtricks), and penalties for failed bids or Nil bids.
+        The first team to reach 500 points wins!
+      </p>
+      <button id="tutorialBtn" class="btn-secondary">View Tutorial</button>
+    </section>
+  </div>
+
+  <script>
+    const socket = io();
+
+    document.getElementById('singleplayerBtn').onclick = () => 
+      window.location.href = 'game.html?mode=single';
+
+    document.getElementById('multiplayerBtn').onclick = () => 
+      document.getElementById('multiplayerOptions').classList.toggle('hidden');
+
+    document.getElementById('tutorialBtn').onclick = () => 
+      window.location.href = 'tutorial.html';
+
+    document.getElementById('createRoomBtn').onclick = () => {
+      const name = document.getElementById('playerName').value;
+      socket.emit('createGame', { name });
+    };
+
+    document.getElementById('joinRoomBtn').onclick = () => {
+      const name = document.getElementById('playerName').value;
+      const room = document.getElementById('roomId').value;
+      socket.emit('joinGame', { roomId: room, name });
+    };
+
+    socket.on('gameCreated', data => {
+      const name = document.getElementById('playerName').value;
+      window.location.href = `game.html?mode=multi&roomId=${data.roomId}&name=${encodeURIComponent(name)}`;
+    });
+
+    socket.on('playerList', players => {
+      const roomId = document.getElementById('roomId').value;
+      if (players.length === 4) {
+        const name = document.getElementById('playerName').value;
+        window.location.href = `game.html?mode=multi&roomId=${roomId}&name=${encodeURIComponent(name)}`;
+      }
+    });
+  </script>
+</body>
+</html>

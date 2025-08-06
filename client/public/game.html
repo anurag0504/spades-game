@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Spades Game</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/themes.css" />
+</head>
+<body>
+  <div class="game-container">
+    <header>
+      <h1>♠ Spades</h1>
+      <div id="scoreboard" class="scoreboard">
+        <div class="team-score">Team 1: <span id="team1Score">0</span> | Bags: <span id="team1Bags">0</span></div>
+        <div class="team-score">Team 2: <span id="team2Score">0</span> | Bags: <span id="team2Bags">0</span></div>
+      </div>
+    </header>
+
+    <div id="biddingPhase" class="bidding hidden">
+      <h2>Bidding Phase</h2>
+      <input id="bidInput" type="number" min="0" max="13" placeholder="Your bid" />
+      <label><input id="blindNil" type="checkbox"/> Blind Nil</label>
+      <button id="submitBidBtn" class="btn">Submit Bid</button>
+    </div>
+
+    <main class="game-table">
+      <div id="player2" class="player top"></div>
+      <div id="player1" class="player left"></div>
+      <div id="centerTable" class="table-center"></div>
+      <div id="player3" class="player right"></div>
+      <div id="player4" class="player bottom">
+        <div id="yourHand" class="hand"></div>
+      </div>
+    </main>
+
+    <footer>
+      <div id="turnIndicator">Waiting for players...</div>
+      <button id="hintBtn" class="btn-secondary">Hint</button>
+    </footer>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/utils.js"></script>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get('mode');
+    if (mode === 'single') {
+      document.write('<script src="js/singleplayer.js"><\/script>');
+    } else {
+      document.write('<script src="js/multiplayer.js"><\/script>');
+    }
+  </script>
+</body>
+</html>

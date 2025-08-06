@@ -1,0 +1,34 @@
+/* ===== THEMES ===== */
+
+/* Default Theme */
+:root {
+    --card-bg: white;
+    --card-text: black;
+    --table-bg: green;
+  }
+  
+  /* Dark Theme */
+  body.dark-mode {
+    background: #111;
+    color: #fff;
+  }
+  
+  body.dark-mode .card {
+    background: #333;
+    color: #fff;
+  }
+  
+  /* Blue Table Theme */
+  .table-center.blue {
+    background: #006699;
+  }
+  
+  /* Custom Card Backs */
+  .card-back-1 {
+    background: linear-gradient(45deg, #ff6f61, #ffcc70);
+  }
+  
+  .card-back-2 {
+    background: linear-gradient(45deg, #42e695, #3bb2b8);
+  }
+  
