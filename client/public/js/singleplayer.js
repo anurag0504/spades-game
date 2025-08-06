@@ -1,4 +1,3 @@
-// singleplayer.js
 if (window.location.search.includes('mode=single')) {
     const deck = shuffleDeck(createDeck());
     const players = [[], [], [], []];
@@ -9,7 +8,6 @@ if (window.location.search.includes('mode=single')) {
   
     renderHand(players[0], 'yourHand'); // Human player
   
-    // Simple AI auto-playing
     function aiPlay(playerIndex) {
       const card = players[playerIndex].shift();
       const table = document.getElementById('centerTable');

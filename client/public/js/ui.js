@@ -1,5 +1,5 @@
 // ui.js
-export function renderHand(hand, containerId) {
+export function renderHand(hand, containerId, playable = () => true) {
     const container = document.getElementById(containerId);
     container.innerHTML = '';
     hand.forEach(card => {
@@ -8,6 +8,11 @@ export function renderHand(hand, containerId) {
       div.textContent = cardToString(card);
       div.dataset.suit = card.suit;
       div.dataset.rank = card.rank;
+  
+      if (!playable(card)) {
+        div.classList.add('unplayable');
+      }
+  
       container.appendChild(div);
     });
   }
@@ -32,5 +37,9 @@ export function renderHand(hand, containerId) {
     document.getElementById('team1Bags').textContent = bags[0];
     document.getElementById('team2Score').textContent = scores[1];
     document.getElementById('team2Bags').textContent = bags[1];
+  }
+  
+  function cardToString(card) {
+    return `${card.rank}${card.suit}`;
   }
   
