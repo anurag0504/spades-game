@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Spades Multiplayer</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <h1>♠ Spades Multiplayer ♠</h1>
+  <div id="setup">
+    <input id="playerName" placeholder="Enter your name" />
+    <input id="roomId" placeholder="Room ID" />
+    <button id="joinBtn">Join Room</button>
+  </div>
+
+  <div id="lobby" style="display:none;">
+    <h3>Players:</h3>
+    <div id="playersList"></div>
+  </div>
+
+  <div id="bidding" style="display:none;">
+    <h3>Enter your bid:</h3>
+    <input id="bidInput" type="number" min="0" max="13"/>
+    <label><input type="checkbox" id="blindNil"/> Blind Nil</label>
+    <button id="submitBid">Submit</button>
+  </div>
+
+  <div id="game" style="display:none;">
+    <h2 id="turnIndicator"></h2>
+    <div id="scoreboard"></div>
+    <div id="bagsDisplay"></div>
+    <div id="table" class="table"></div>
+    <h3>Your Hand:</h3>
+    <div id="playerHand" class="hand"></div>
+  </div>
+</body>
+</html>
