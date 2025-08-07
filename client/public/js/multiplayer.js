@@ -1,46 +1,73 @@
-// multiplayer.js - Fixed multiplayer client
+// multiplayer.js - Clean multiplayer client
 
 // Only initialize if in multiplayer mode
 if (window.location.search.includes('mode=multi')) {
+    console.log('Initializing multiplayer...');
+    
     const socket = io();
     let roomId, playerId;
     let myHand = [], currentTurn = 0, currentTrickSuit = null;
 
     // Get parameters from URL
-    const params = new URLSearchParams(window.location.search);
-    roomId = params.get('roomId');
-    const playerName = params.get('name');
+    const urlParams = new URLSearchParams(window.location.search);
+    roomId = urlParams.get('roomId');
+    const playerName = urlParams.get('name');
+    const isCreator = urlParams.get('creator') === 'true';
 
-    console.log('Multiplayer mode initialized', { roomId, playerName });
+    console.log('Multiplayer mode initialized', { roomId, playerName, isCreator });
 
-    // Auto-join room if parameters exist
-    if (roomId && playerName) {
+    // Handle room creation vs joining
+    if (isCreator && playerName) {
+        console.log('Creating room as:', playerName);
+        socket.emit('createGame', { name: playerName });
+    } else if (roomId && playerName) {
+        console.log('Joining room:', roomId, 'as:', playerName);
         socket.emit('joinGame', { roomId, name: playerName });
+    } else {
+        console.log('Missing required parameters');
+        if (typeof showMessage === 'function') {
+            showMessage('Missing room information');
+        } else {
+            alert('Missing room information');
+        }
     }
 
     // Socket event handlers
     socket.on('gameCreated', ({ roomId: id, playerId: pid }) => {
         roomId = id;
         playerId = pid;
-        console.log('Game created:', { roomId, playerId });
-        showMessage(`Room created: ${roomId}`);
+        console.log('Room created successfully:', { roomId, playerId });
+        if (typeof showMessage === 'function') {
+            showMessage(`Room created: ${roomId}. Share this ID with others!`);
+        } else {
+            alert(`Room created: ${roomId}. Share this ID with others!`);
+        }
     });
 
     socket.on('joinedRoom', ({ roomId: id, playerId: pid }) => {
         roomId = id;
         playerId = pid;
-        console.log('Joined room:', { roomId, playerId });
-        showMessage(`Joined room: ${roomId}`);
+        console.log('Successfully joined room:', { roomId, playerId });
+        if (typeof showMessage === 'function') {
+            showMessage(`Joined room: ${roomId}`);
+        } else {
+            alert(`Joined room: ${roomId}`);
+        }
     });
 
     socket.on('playerList', players => {
         console.log('Player list updated:', players);
-        // Could display player list in UI if needed
-        showMessage(`Players in room: ${players.length}/4`);
-
-        // Auto-start when room is full
-        if (players.length === 4) {
-            showMessage('Room full! Starting game...', 2000);
+        const humanPlayers = players.filter(p => !p.isBot);
+        if (typeof showMessage === 'function') {
+            showMessage(`Players in room: ${humanPlayers.length}/4`);
+        } else {
+            console.log(`Players in room: ${humanPlayers.length}/4`);
+        }
+        
+        if (humanPlayers.length === 4) {
+            if (typeof showMessage === 'function') {
+                showMessage('Room full! Starting game...', 2000);
+            }
         }
     });
 
@@ -55,56 +82,66 @@ if (window.location.search.includes('mode=multi')) {
 
     socket.on('bidsUpdate', (bids) => {
         console.log('Bids updated:', bids);
-        showMessage(`Current bids: ${bids.join(', ')}`, 2000);
+        if (typeof showMessage === 'function') {
+            showMessage(`Current bids: ${bids.join(', ')}`, 2000);
+        }
     });
 
     socket.on('dealCards', (hand) => {
         console.log('Cards dealt:', hand);
         myHand = hand;
-
+        
         // Sort hand
-        myHand.sort((a, b) => {
-            if (a.suit === b.suit) {
-                return getRankValue(a.rank) - getRankValue(b.rank);
-            }
-            return a.suit.localeCompare(b.suit);
-        });
-
-        renderHand(myHand, 'yourHand');
-        showMessage('Cards dealt! Waiting for all players...');
+        if (typeof getRankValue === 'function') {
+            myHand.sort((a, b) => {
+                if (a.suit === b.suit) {
+                    return getRankValue(a.rank) - getRankValue(b.rank);
+                }
+                return a.suit.localeCompare(b.suit);
+            });
+        }
+        
+        if (typeof renderHand === 'function') {
+            renderHand(myHand, 'yourHand');
+        }
+        if (typeof showMessage === 'function') {
+            showMessage('Cards dealt! Game starting...');
+        }
     });
 
     socket.on('roundStarted', () => {
         console.log('Round started');
-        showMessage('Round started!', 2000);
+        if (typeof showMessage === 'function') {
+            showMessage('Round started!', 2000);
+        }
         updatePlayableCards();
     });
 
     socket.on('cardPlayed', ({ playerIndex, card }) => {
         console.log(`Player ${playerIndex} played:`, card);
-
-        // Display card on table
+        
         const table = document.getElementById('centerTable');
         if (table) {
             const cardDiv = document.createElement('div');
             cardDiv.className = 'card played-card';
-            cardDiv.textContent = cardToString(card);
+            cardDiv.textContent = typeof cardToString === 'function' ? cardToString(card) : `${card.rank}${card.suit}`;
             cardDiv.style.margin = '5px';
             table.appendChild(cardDiv);
         }
-
-        // Update current trick suit
+        
         if (table && table.children.length === 1) {
             currentTrickSuit = card.suit;
         }
-
+        
         updatePlayableCards();
     });
 
     socket.on('trickWinner', ({ winner }) => {
         console.log('Trick winner:', winner);
-        showMessage(`Player ${winner} wins the trick!`, 2000);
-
+        if (typeof showMessage === 'function') {
+            showMessage(`Player ${winner} wins the trick!`, 2000);
+        }
+        
         setTimeout(() => {
             const table = document.getElementById('centerTable');
             if (table) table.innerHTML = '';
@@ -115,8 +152,12 @@ if (window.location.search.includes('mode=multi')) {
 
     socket.on('gameOver', ({ scores }) => {
         console.log('Game over:', scores);
-        updateScoreboard(scores, [0, 0]); // Assuming no bag info
-        showMessage('Game Over!');
+        if (typeof updateScoreboard === 'function') {
+            updateScoreboard(scores, [0, 0]);
+        }
+        if (typeof showMessage === 'function') {
+            showMessage('Game Over!');
+        }
     });
 
     socket.on('errorMessage', (message) => {
@@ -137,16 +178,16 @@ if (window.location.search.includes('mode=multi')) {
         if (!handArea) return;
 
         const cards = handArea.querySelectorAll('.card');
-
+        
         cards.forEach((cardElement, index) => {
             if (index >= myHand.length) return;
-
+            
             const card = myHand[index];
             const isPlayable = checkCardPlayable(card);
 
             cardElement.classList.remove('unplayable');
             cardElement.onclick = null;
-
+            
             if (isPlayable) {
                 cardElement.style.cursor = 'pointer';
                 cardElement.onclick = () => playCard(card, index);
@@ -158,64 +199,49 @@ if (window.location.search.includes('mode=multi')) {
     }
 
     function checkCardPlayable(card) {
-        // If no suit led yet (first card of trick), any card is playable
         if (!currentTrickSuit) return true;
-
-        // Check if player has at least one card of the current trick suit
         const hasSuit = myHand.some(c => c.suit === currentTrickSuit);
-
-        if (hasSuit) {
-            // Can only play matching suit if you have it
-            return card.suit === currentTrickSuit;
-        } else {
-            // If you don't have that suit, any card is playable
-            return true;
-        }
+        return hasSuit ? card.suit === currentTrickSuit : true;
     }
 
     function playCard(card, index) {
         if (!roomId) return;
-
+        
         console.log('Playing card:', card);
-
-        // Remove from hand
         myHand.splice(index, 1);
-
-        // Send to server
         socket.emit('playCard', { roomId, card });
-
-        // Update display
-        renderHand(myHand, 'yourHand');
+        
+        if (typeof renderHand === 'function') {
+            renderHand(myHand, 'yourHand');
+        }
         updatePlayableCards();
     }
 
     function submitBid() {
         const bidInput = document.getElementById('bidInput');
         const blindNilCheck = document.getElementById('blindNil');
-
+        
         if (!bidInput || !roomId) return;
-
+        
         const bid = parseInt(bidInput.value);
         const blindNil = blindNilCheck ? blindNilCheck.checked : false;
-
+        
         if (isNaN(bid) || bid < 0 || bid > 13) {
             alert('Please enter a valid bid (0-13)');
             return;
         }
-
+        
         console.log('Submitting bid:', { bid, blindNil });
         socket.emit('bid', { roomId, bid, blindNil });
-
-        // Hide bidding interface
+        
         const biddingPhase = document.getElementById('biddingPhase');
         if (biddingPhase) {
             biddingPhase.classList.add('hidden');
         }
-
-        // Clear input
+        
         bidInput.value = '';
         if (blindNilCheck) blindNilCheck.checked = false;
-
+        
         updateTurnIndicator('Waiting for other players to bid...');
     }
 
@@ -229,6 +255,6 @@ if (window.location.search.includes('mode=multi')) {
 
     // Expose functions globally
     window.submitBid = submitBid;
-
+    
     console.log('Multiplayer module loaded');
 }

@@ -1,81 +1,118 @@
+
+## **2. Fixed `index.html` - Replace your current index.html with this:**
+
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Spades - Main Menu</title>
-  <link rel="stylesheet" href="css/style.css" />
-  <link rel="stylesheet" href="css/themes.css" />
-  <script src="/socket.io/socket.io.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spades Game - Home</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/themes.css">
 </head>
 <body>
-  <div class="menu-container">
-    <h1>♠ Spades Game ♠</h1>
-    
-    <section class="game-mode">
-      <h2>Select Game Mode</h2>
-      <button id="singleplayerBtn" class="btn">Singleplayer vs AI</button>
-      <button id="multiplayerBtn" class="btn">Online Multiplayer</button>
-    </section>
+    <div class="menu-container">
+        <h1>♠ Spades Card Game ♠</h1>
+        
+        <div class="game-mode">
+            <h2>Game Modes</h2>
+            <button class="btn" onclick="window.location.href='game.html?mode=single'">Single Player</button>
+            <button class="btn" onclick="showMultiplayerOptions()">Online Multiplayer</button>
+            <button class="btn btn-secondary" onclick="window.location.href='tutorial.html'">Tutorial</button>
+        </div>
 
-    <section id="multiplayerOptions" class="hidden">
-      <h3>Multiplayer Options</h3>
-      <input id="playerName" type="text" placeholder="Enter your name" />
-      <div class="room-options">
-        <button id="createRoomBtn" class="btn">Create Room</button>
-        <input id="roomId" type="text" placeholder="Room ID" />
-        <button id="joinRoomBtn" class="btn">Join Room</button>
-      </div>
-    </section>
+        <!-- Multiplayer Options Section -->
+        <section id="multiplayerOptions" class="hidden">
+            <h3>Multiplayer Options</h3>
+            <input id="playerName" type="text" placeholder="Enter your name" />
+            <div class="room-options">
+                <button id="createRoomBtn" class="btn">Create Room</button>
+                <input id="roomId" type="text" placeholder="Room ID" />
+                <button id="joinRoomBtn" class="btn">Join Room</button>
+            </div>
+        </section>
+        
+        <div class="rules">
+            <h2>Rules</h2>
+            <p>Spades is a 4-player trick-taking game with two teams (Players 1 &amp; 3 vs Players 2 &amp; 4). Each player bids how many tricks they expect to win. Spades are trump, and you must follow suit if possible. Points are earned based on successful bids, bags (overtricks), and penalties for failed bids or Nil bids. The first team to reach 500 points wins!</p>
+        </div>
+    </div>
 
-    <section class="rules">
-      <h2>Game Rules</h2>
-      <p>
-        Spades is a 4-player trick-taking game with two teams (Players 1 & 3 vs Players 2 & 4). 
-        Each player bids how many tricks they expect to win. 
-        Spades are trump, and you must follow suit if possible. 
-        Points are earned based on successful bids, bags (overtricks), and penalties for failed bids or Nil bids.
-        The first team to reach 500 points wins!
-      </p>
-      <button id="tutorialBtn" class="btn-secondary">View Tutorial</button>
-    </section>
-  </div>
+    <script>
+        function showMultiplayerOptions() {
+            const multiplayerSection = document.getElementById('multiplayerOptions');
+            if (multiplayerSection) {
+                multiplayerSection.classList.toggle('hidden');
+            }
+        }
+    </script>
 
-  <script>
-    const socket = io();
+    <!-- Multiplayer Room Management Scripts -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        
+        function goToMultiplayerGame(params) {
+            const url = 'game.html?' + new URLSearchParams(params).toString();
+            console.log('Navigating to:', url);
+            window.location.href = url;
+        }
 
-    document.getElementById('singleplayerBtn').onclick = () => 
-      window.location.href = 'game.html?mode=single';
+        // Handle Create Room button click
+        const createRoomBtn = document.getElementById('createRoomBtn');
+        if (createRoomBtn) {
+            createRoomBtn.addEventListener('click', function() {
+                const name = document.getElementById('playerName').value.trim();
+                
+                if (!name) {
+                    alert('Please enter your name first');
+                    return;
+                }
+                
+                console.log('Creating room for player:', name);
+                
+                // Navigate directly to game page with creator flag
+                // The room creation will happen in multiplayer.js
+                goToMultiplayerGame({ 
+                    mode: 'multi', 
+                    name: name,
+                    creator: 'true'  // Flag to indicate this is room creator
+                });
+            });
+        }
 
-    document.getElementById('multiplayerBtn').onclick = () => 
-      document.getElementById('multiplayerOptions').classList.toggle('hidden');
-
-    document.getElementById('tutorialBtn').onclick = () => 
-      window.location.href = 'tutorial.html';
-
-    document.getElementById('createRoomBtn').onclick = () => {
-      const name = document.getElementById('playerName').value;
-      socket.emit('createGame', { name });
-    };
-
-    document.getElementById('joinRoomBtn').onclick = () => {
-      const name = document.getElementById('playerName').value;
-      const room = document.getElementById('roomId').value;
-      socket.emit('joinGame', { roomId: room, name });
-    };
-
-    socket.on('gameCreated', data => {
-      const name = document.getElementById('playerName').value;
-      window.location.href = `game.html?mode=multi&roomId=${data.roomId}&name=${encodeURIComponent(name)}`;
+        // Handle Join Room button click  
+        const joinRoomBtn = document.getElementById('joinRoomBtn');
+        if (joinRoomBtn) {
+            joinRoomBtn.addEventListener('click', function() {
+                const name = document.getElementById('playerName').value.trim();
+                const roomId = document.getElementById('roomId').value.trim();
+                
+                if (!name) {
+                    alert('Please enter your name');
+                    return;
+                }
+                
+                if (!roomId) {
+                    alert('Please enter a Room ID');
+                    return;
+                }
+                
+                console.log('Attempting to join room:', roomId, 'as:', name);
+                
+                goToMultiplayerGame({ 
+                    mode: 'multi', 
+                    roomId: roomId, 
+                    name: name,
+                    creator: 'false'  // Flag to indicate this is joining existing room
+                });
+            });
+        }
     });
+    </script>
 
-    socket.on('playerList', players => {
-      const roomId = document.getElementById('roomId').value;
-      if (players.length === 4) {
-        const name = document.getElementById('playerName').value;
-        window.location.href = `game.html?mode=multi&roomId=${roomId}&name=${encodeURIComponent(name)}`;
-      }
-    });
-  </script>
+  <script src="js/menu.js"></script>
+  <script src="js/utils.js"></script>
 </body>
 </html>

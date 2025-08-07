@@ -41,9 +41,13 @@
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
-  <script src="js/ui.js"></script>
-  <script src="js/hints.js"></script>
   <script src="js/utils.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/singleplayer.js"></script>
+  <script src="js/multiplayer.js"></script>
+  <script src="js/hints.js"></script>
+  <script src="js/stats.js"></script>
+  <script src="js/tutorial.js"></script>
   <script>
     const params = new URLSearchParams(window.location.search);
     const mode = params.get('mode');
@@ -53,5 +57,6 @@
       document.write('<script src="js/multiplayer.js"><\/script>');
     }
   </script>
+
 </body>
 </html>

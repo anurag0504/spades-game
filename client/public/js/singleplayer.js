@@ -70,35 +70,40 @@ if (window.location.search.includes('mode=single')) {
     function submitBid() {
         const bidInput = document.getElementById('bidInput');
         const blindNilCheck = document.getElementById('blindNil');
-
         if (!bidInput) return;
-
-        const bid = parseInt(bidInput.value);
+        
+        const bidValue = bidInput.value.trim();
+        if (bidValue === '') {
+            alert('Please enter a bid (0-13)');
+            return;
+        }
+        
+        const bid = parseInt(bidValue);
         const blindNil = blindNilCheck ? blindNilCheck.checked : false;
-
+        
         if (isNaN(bid) || bid < 0 || bid > 13) {
             alert('Please enter a valid bid (0-13)');
             return;
         }
-
+    
         // Set human player's bid
         gameState.bids[0] = blindNil ? 0 : bid;
         console.log(`Human bid: ${gameState.bids[0]}`);
-
+        
         // Hide bidding interface
         const biddingPhase = document.getElementById('biddingPhase');
         if (biddingPhase) {
             biddingPhase.classList.add('hidden');
         }
-
+    
         // Clear bid input
         bidInput.value = '';
         if (blindNilCheck) blindNilCheck.checked = false;
-
+        
         // Process AI bids
         processAIBids();
     }
-
+    
     function processAIBids() {
         // Simple AI bidding logic
         for (let i = 1; i < 4; i++) {
