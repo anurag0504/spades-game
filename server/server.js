@@ -1,96 +1,322 @@
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const path = require('path');
 const SpadesGame = require('./gameEngine');
 const BeginnerAI = require('./ai/beginnerAI');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
+});
 
-app.use(express.static(__dirname + '/../client/public'));
+// Serve static files from client/public directory
+app.use(express.static(path.join(__dirname, '../client/public')));
 
 let games = {};
 
 io.on('connection', socket => {
-  socket.on('createGame', ({ name }) => {
-    const roomId = Math.random().toString(36).substr(2, 6);
-    games[roomId] = new SpadesGame();
-    games[roomId].addPlayer({ id: socket.id, name });
-    socket.join(roomId);
-    io.to(socket.id).emit('gameCreated', { roomId });
-  });
+    console.log('Player connected:', socket.id);
 
-  socket.on('joinGame', ({ roomId, name }) => {
-    const game = games[roomId];
-    if (game && game.players.length < 4) {
-      game.addPlayer({ id: socket.id, name });
-      socket.join(roomId);
-      io.to(roomId).emit('playerList', game.players);
+    socket.on('createGame', ({ name }) => {
+        try {
+            const roomId = Math.random().toString(36).substr(2, 6);
+            console.log(`Creating game ${roomId} for ${name}`);
 
-      // Fill remaining slots with bots automatically
-      if (game.players.length === 4) {
-        startBidding(roomId);
-      }
-    }
-  });
+            games[roomId] = new SpadesGame();
+            games[roomId].addPlayer({ id: socket.id, name, isBot: false });
 
-  socket.on('bid', ({ roomId, bid, blindNil }) => {
-    const game = games[roomId];
-    const idx = game.players.findIndex(p => p.id === socket.id);
-    game.setBid(idx, bid, blindNil);
-    io.to(roomId).emit('bidsUpdate', game.players.map(p => p.bid));
-    if (game.players.every(p => p.bid !== null)) {
-      dealAndStart(roomId);
-    }
-  });
+            socket.join(roomId);
 
-  socket.on('playCard', ({ roomId, card }) => {
-    const game = games[roomId];
-    const idx = game.players.findIndex(p => p.id === socket.id);
+            // Fill with bots automatically
+            for (let i = 1; i < 4; i++) {
+                games[roomId].addPlayer({ 
+                    id: `bot_${i}`, 
+                    name: `Bot ${i}`, 
+                    isBot: true 
+                });
+            }
 
-    try {
-      const winner = game.playCard(idx, card);
-      io.to(roomId).emit('cardPlayed', { playerIndex: idx, card });
+            io.to(socket.id).emit('gameCreated', { roomId, playerId: socket.id });
+            io.to(roomId).emit('playerList', games[roomId].players);
 
-      if (winner !== null) {
-        io.to(roomId).emit('trickWinner', { winner });
+            console.log(`Game ${roomId} created with 4 players (3 bots)`);
 
-        if (game.players[0].hand.length === 0) {
-          game.calculateScores();
-          if (game.isGameOver()) {
-            io.to(roomId).emit('gameOver', { scores: game.scores });
-          } else {
-            game.resetRound();
-            startBidding(roomId);
-          }
+            // Start bidding after a short delay
+            setTimeout(() => {
+                startBidding(roomId);
+            }, 1000);
+
+        } catch (error) {
+            console.error('Error creating game:', error);
+            socket.emit('errorMessage', 'Failed to create game');
         }
-      }
-    } catch (err) {
-      io.to(socket.id).emit('errorMessage', err.message);
-    }
-  });
+    });
 
-  socket.on('disconnect', () => {
-    for (const roomId in games) {
-      const game = games[roomId];
-      game.players = game.players.filter(p => p.id !== socket.id);
-      io.to(roomId).emit('playerList', game.players);
-    }
-  });
+    socket.on('joinGame', ({ roomId, name }) => {
+        try {
+            const game = games[roomId];
+            if (!game) {
+                socket.emit('errorMessage', 'Room not found');
+                return;
+            }
+
+            if (game.players.length >= 4) {
+                socket.emit('errorMessage', 'Room is full');
+                return;
+            }
+
+            console.log(`${name} joining game ${roomId}`);
+
+            game.addPlayer({ id: socket.id, name, isBot: false });
+            socket.join(roomId);
+
+            io.to(socket.id).emit('joinedRoom', { roomId, playerId: socket.id });
+            io.to(roomId).emit('playerList', game.players);
+
+            // Fill remaining slots with bots
+            while (game.players.length < 4) {
+                const botIndex = game.players.length;
+                game.addPlayer({ 
+                    id: `bot_${botIndex}`, 
+                    name: `Bot ${botIndex}`, 
+                    isBot: true 
+                });
+            }
+
+            if (game.players.length === 4) {
+                console.log(`Game ${roomId} full, starting bidding`);
+                io.to(roomId).emit('playerList', game.players);
+                setTimeout(() => {
+                    startBidding(roomId);
+                }, 1000);
+            }
+
+        } catch (error) {
+            console.error('Error joining game:', error);
+            socket.emit('errorMessage', 'Failed to join game');
+        }
+    });
+
+    socket.on('bid', ({ roomId, bid, blindNil }) => {
+        try {
+            const game = games[roomId];
+            if (!game) return;
+
+            const playerIndex = game.players.findIndex(p => p.id === socket.id);
+            if (playerIndex === -1) return;
+
+            console.log(`Player ${playerIndex} bids ${bid} (blindNil: ${blindNil})`);
+
+            game.setBid(playerIndex, blindNil ? 0 : bid, blindNil);
+
+            // Process bot bids
+            processBotBids(game);
+
+            io.to(roomId).emit('bidsUpdate', game.players.map(p => p.bid));
+
+            if (game.players.every(p => p.bid !== null)) {
+                console.log(`All bids received for game ${roomId}, dealing cards`);
+                setTimeout(() => {
+                    dealAndStart(roomId);
+                }, 1000);
+            }
+
+        } catch (error) {
+            console.error('Error processing bid:', error);
+            socket.emit('errorMessage', 'Failed to process bid');
+        }
+    });
+
+    socket.on('playCard', ({ roomId, card }) => {
+        try {
+            const game = games[roomId];
+            if (!game) return;
+
+            const playerIndex = game.players.findIndex(p => p.id === socket.id);
+            if (playerIndex === -1) return;
+
+            console.log(`Player ${playerIndex} plays:`, card);
+
+            const winner = game.playCard(playerIndex, card);
+            io.to(roomId).emit('cardPlayed', { playerIndex, card });
+
+            if (winner !== null) {
+                console.log(`Player ${winner} wins trick`);
+                io.to(roomId).emit('trickWinner', { winner });
+
+                // Check if round is over
+                if (game.players[0].hand.length === 0) {
+                    game.calculateScores();
+                    if (game.isGameOver()) {
+                        const winningTeam = game.scores[0] >= 500 ? 0 : 1;
+                        io.to(roomId).emit('gameOver', { scores: game.scores, winner: winningTeam });
+                    } else {
+                        // Start new round
+                        setTimeout(() => {
+                            game.resetRound();
+                            startBidding(roomId);
+                        }, 3000);
+                    }
+                } else {
+                    // Continue with next player or bot
+                    setTimeout(() => {
+                        processBotTurns(roomId);
+                    }, 1000);
+                }
+            } else {
+                // Continue with next player or bot
+                setTimeout(() => {
+                    processBotTurns(roomId);
+                }, 1000);
+            }
+
+        } catch (err) {
+            console.error('Error playing card:', err);
+            io.to(socket.id).emit('errorMessage', err.message);
+        }
+    });
+
+    socket.on('disconnect', () => {
+        console.log('Player disconnected:', socket.id);
+        // Clean up games with disconnected players
+        for (const roomId in games) {
+            const game = games[roomId];
+            const playerIndex = game.players.findIndex(p => p.id === socket.id);
+            if (playerIndex !== -1) {
+                console.log(`Removing player from game ${roomId}`);
+                game.players.splice(playerIndex, 1);
+                io.to(roomId).emit('playerList', game.players);
+
+                // If no human players left, delete the game
+                const humanPlayers = game.players.filter(p => !p.isBot);
+                if (humanPlayers.length === 0) {
+                    delete games[roomId];
+                    console.log(`Game ${roomId} deleted - no human players`);
+                }
+            }
+        }
+    });
 });
 
+function processBotBids(game) {
+    game.players.forEach((player, index) => {
+        if (player.isBot && player.bid === null) {
+            const bid = BeginnerAI.bid(player.hand);
+            game.setBid(index, bid, false);
+            console.log(`Bot ${index} bids ${bid}`);
+        }
+    });
+}
+
+function processBotTurns(roomId) {
+    const game = games[roomId];
+    if (!game) return;
+
+    const currentPlayer = game.players[game.currentTurn];
+    if (currentPlayer && currentPlayer.isBot) {
+        console.log(`Processing bot turn for player ${game.currentTurn}`);
+
+        // Simple bot play logic
+        const hand = currentPlayer.hand;
+        if (hand.length === 0) return;
+
+        const leadSuit = game.currentTrick.length > 0 ? game.currentTrick[0].card.suit : null;
+        const card = BeginnerAI.playCard(hand, leadSuit, game.spadesBroken);
+
+        if (card) {
+            try {
+                const winner = game.playCard(game.currentTurn, card);
+                io.to(roomId).emit('cardPlayed', { playerIndex: game.currentTurn, card });
+
+                if (winner !== null) {
+                    io.to(roomId).emit('trickWinner', { winner });
+
+                    // Check if round is over
+                    if (game.players[0].hand.length === 0) {
+                        game.calculateScores();
+                        if (game.isGameOver()) {
+                            const winningTeam = game.scores[0] >= 500 ? 0 : 1;
+                            io.to(roomId).emit('gameOver', { scores: game.scores, winner: winningTeam });
+                        } else {
+                            setTimeout(() => {
+                                game.resetRound();
+                                startBidding(roomId);
+                            }, 3000);
+                        }
+                    } else {
+                        // Continue with next turn
+                        setTimeout(() => {
+                            processBotTurns(roomId);
+                        }, 1000);
+                    }
+                } else {
+                    // Continue with next turn
+                    setTimeout(() => {
+                        processBotTurns(roomId);
+                    }, 1000);
+                }
+
+            } catch (error) {
+                console.error('Bot play error:', error);
+            }
+        }
+    }
+}
+
 function startBidding(roomId) {
-  io.to(roomId).emit('biddingStart');
+    const game = games[roomId];
+    if (!game) return;
+
+    console.log(`Starting bidding for game ${roomId}`);
+    io.to(roomId).emit('biddingStart');
+
+    // Process bot bids immediately
+    setTimeout(() => {
+        processBotBids(game);
+
+        // Check if all bids are complete (human player still needs to bid)
+        const humanPlayer = game.players.find(p => !p.isBot);
+        if (humanPlayer && humanPlayer.bid === null) {
+            // Wait for human bid
+            return;
+        } else if (game.players.every(p => p.bid !== null)) {
+            dealAndStart(roomId);
+        }
+    }, 500);
 }
 
 function dealAndStart(roomId) {
-  const game = games[roomId];
-  game.createDeck();
-  game.shuffleDeck();
-  game.dealCards();
-  game.players.forEach((p, i) => io.to(p.id).emit('dealCards', game.players[i].hand));
-  io.to(roomId).emit('roundStarted');
+    const game = games[roomId];
+    if (!game) return;
+
+    console.log(`Dealing cards for game ${roomId}`);
+
+    game.createDeck();
+    game.shuffleDeck();
+    game.dealCards();
+
+    // Send cards to human players only
+    game.players.forEach((player, index) => {
+        if (!player.isBot) {
+            io.to(player.id).emit('dealCards', player.hand);
+        }
+    });
+
+    io.to(roomId).emit('roundStarted');
+
+    // Start first turn
+    setTimeout(() => {
+        processBotTurns(roomId);
+    }, 2000);
 }
 
-server.listen(3000, () => console.log('Server running on port 3000'));
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+    console.log(`Spades game server running on port ${PORT}`);
+    console.log('Visit http://localhost:' + PORT + ' to play!');
+});

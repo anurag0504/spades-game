@@ -1,11 +1,12 @@
 {
   "name": "spades-game",
-  "version": "1.0.0",
-  "main": "script.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
-  },
+    "version": "1.0.0",
+    "description": "A multiplayer Spades card game with single player mode",
+    "main": "server/server.js",
+    "scripts": {
+        "start": "node server/server.js",
+        "dev": "nodemon server/server.js"
+    },
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -13,5 +14,14 @@
     "express": "^5.1.0",
     "socket.io": "^4.8.1"
   },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anurag0504/spades-game.git"
+  },
+  "bugs": {
+    "url": "https://github.com/anurag0504/spades-game/issues"
+  },
+  "homepage": "https://github.com/anurag0504/spades-game#readme",
   "description": ""
 }

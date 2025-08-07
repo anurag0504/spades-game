@@ -1,163 +1,234 @@
-// multiplayer.js
-const socket = io();
-let roomId, playerId, isLeader = false;
-let myHand = [], currentTurn, playableCards = [];
+// multiplayer.js - Fixed multiplayer client
 
-document.getElementById('createRoomBtn')?.addEventListener('click', () => {
-  const name = document.getElementById('playerName').value;
-  const totalPlayers = parseInt(document.getElementById('totalPlayers').value);
-  const botCount = parseInt(document.getElementById('botPlayers').value);
+// Only initialize if in multiplayer mode
+if (window.location.search.includes('mode=multi')) {
+    const socket = io();
+    let roomId, playerId;
+    let myHand = [], currentTurn = 0, currentTrickSuit = null;
 
-  if (name && totalPlayers && totalPlayers - botCount >= 1) {
-    socket.emit('createGame', { name, totalPlayers, botCount });
-  } else {
-    alert("Invalid input for players/bots.");
-  }
-});
+    // Get parameters from URL
+    const params = new URLSearchParams(window.location.search);
+    roomId = params.get('roomId');
+    const playerName = params.get('name');
 
-document.getElementById('joinRoomBtn')?.addEventListener('click', () => {
-  const name = document.getElementById('playerName').value;
-  const room = document.getElementById('roomId').value;
-  if (name && room) socket.emit('joinGame', { roomId: room, name });
-});
+    console.log('Multiplayer mode initialized', { roomId, playerName });
 
-socket.on('gameCreated', ({ roomId: id, playerId: pid }) => {
-  roomId = id;
-  playerId = pid;
-  isLeader = true;
-  document.getElementById('roomStatus').textContent = `Room ID: ${roomId}`;
-});
-
-socket.on('joinedRoom', ({ roomId: id, playerId: pid }) => {
-  roomId = id;
-  playerId = pid;
-  document.getElementById('roomStatus').textContent = `Room ID: ${roomId}`;
-});
-
-socket.on('playerList', players => {
-  const list = document.getElementById('playerList');
-  list.innerHTML = '';
-  players.forEach(p => {
-    const li = document.createElement('li');
-    li.textContent = `${p.name} ${p.isBot ? '(BOT)' : ''}`;
-    list.appendChild(li);
-  });
-});
-
-socket.on('biddingStart', ({ currentBidder }) => {
-  if (playerId === currentBidder) {
-    document.getElementById('biddingPhase').classList.remove('hidden');
-  }
-});
-
-document.getElementById('submitBidBtn')?.addEventListener('click', () => {
-  const bid = parseInt(document.getElementById('bidInput').value);
-  const blindNil = document.getElementById('blindNil').checked;
-  socket.emit('bid', { roomId, bid, blindNil });
-  document.getElementById('biddingPhase').classList.add('hidden');
-});
-
-socket.on('dealCards', ({ hand }) => {
-  myHand = hand;
-  renderHand(hand, 'yourHand');
-  updatePlayableCards();
-});
-
-socket.on('updateTurn', ({ playerTurn }) => {
-  currentTurn = playerTurn;
-  updateTurnUI();
-  updatePlayableCards();
-});
-
-socket.on('cardPlayed', ({ playerId: playedBy, card }) => {
-  const table = document.getElementById('centerTable');
-  const div = document.createElement('div');
-  div.className = 'card played-card';
-  div.textContent = cardToString(card);
-  table.appendChild(div);
-});
-
-socket.on('updateScores', ({ scores }) => {
-  const scoreBoard = document.getElementById('scoreBoard');
-  scoreBoard.innerHTML = '';
-  scores.forEach(s => {
-    const p = document.createElement('p');
-    p.textContent = `${s.name}: ${s.score}`;
-    scoreBoard.appendChild(p);
-  });
-});
-
-socket.on('trickWon', ({ winner }) => {
-  const trickInfo = document.getElementById('trickInfo');
-  trickInfo.textContent = `${winner} won the trick!`;
-  setTimeout(() => trickInfo.textContent = '', 2000);
-});
-
-socket.on('gameOver', ({ winner }) => {
-  alert(`${winner} wins the game!`);
-});
-
-// Utility functions
-function renderHand(hand, containerId) {
-  const container = document.getElementById(containerId);
-  container.innerHTML = '';
-  hand.forEach(card => {
-    const div = document.createElement('div');
-    div.className = 'card';
-    div.dataset.suit = card.suit;
-    div.dataset.rank = card.rank;
-    div.textContent = cardToString(card);
-    container.appendChild(div);
-  });
-}
-
-function updatePlayableCards() {
-  const handArea = document.getElementById('yourHand');
-  const cards = handArea.querySelectorAll('.card');
-
-  cards.forEach(card => {
-    const cardObj = { suit: card.dataset.suit, rank: card.dataset.rank };
-    const isPlayable = checkCardPlayable(cardObj);
-
-    if (currentTurn !== playerId) {
-      card.classList.add('greyed-out');
-      card.onclick = null;
-    } else if (isPlayable) {
-      card.classList.remove('greyed-out');
-      card.onclick = () => {
-        socket.emit('playCard', { roomId, card: cardObj });
-        card.remove();
-      };
-    } else {
-      card.classList.add('greyed-out');
-      card.onclick = null;
+    // Auto-join room if parameters exist
+    if (roomId && playerName) {
+        socket.emit('joinGame', { roomId, name: playerName });
     }
-  });
-}
 
-function checkCardPlayable(card) {
-    // If no suit led yet (first card of trick), any card is playable
-    if (!currentTrickSuit) return true;
-  
-    // Check if player has at least one card of the current trick suit
-    const hasSuit = myHand.some(c => c.suit === currentTrickSuit);
-  
-    if (hasSuit) {
-      // Can only play matching suit if you have it
-      return card.suit === currentTrickSuit;
-    } else {
-      // If you don't have that suit, any card is playable
-      return true;
+    // Socket event handlers
+    socket.on('gameCreated', ({ roomId: id, playerId: pid }) => {
+        roomId = id;
+        playerId = pid;
+        console.log('Game created:', { roomId, playerId });
+        showMessage(`Room created: ${roomId}`);
+    });
+
+    socket.on('joinedRoom', ({ roomId: id, playerId: pid }) => {
+        roomId = id;
+        playerId = pid;
+        console.log('Joined room:', { roomId, playerId });
+        showMessage(`Joined room: ${roomId}`);
+    });
+
+    socket.on('playerList', players => {
+        console.log('Player list updated:', players);
+        // Could display player list in UI if needed
+        showMessage(`Players in room: ${players.length}/4`);
+
+        // Auto-start when room is full
+        if (players.length === 4) {
+            showMessage('Room full! Starting game...', 2000);
+        }
+    });
+
+    socket.on('biddingStart', () => {
+        console.log('Bidding started');
+        const biddingPhase = document.getElementById('biddingPhase');
+        if (biddingPhase) {
+            biddingPhase.classList.remove('hidden');
+        }
+        updateTurnIndicator('Your turn to bid');
+    });
+
+    socket.on('bidsUpdate', (bids) => {
+        console.log('Bids updated:', bids);
+        showMessage(`Current bids: ${bids.join(', ')}`, 2000);
+    });
+
+    socket.on('dealCards', (hand) => {
+        console.log('Cards dealt:', hand);
+        myHand = hand;
+
+        // Sort hand
+        myHand.sort((a, b) => {
+            if (a.suit === b.suit) {
+                return getRankValue(a.rank) - getRankValue(b.rank);
+            }
+            return a.suit.localeCompare(b.suit);
+        });
+
+        renderHand(myHand, 'yourHand');
+        showMessage('Cards dealt! Waiting for all players...');
+    });
+
+    socket.on('roundStarted', () => {
+        console.log('Round started');
+        showMessage('Round started!', 2000);
+        updatePlayableCards();
+    });
+
+    socket.on('cardPlayed', ({ playerIndex, card }) => {
+        console.log(`Player ${playerIndex} played:`, card);
+
+        // Display card on table
+        const table = document.getElementById('centerTable');
+        if (table) {
+            const cardDiv = document.createElement('div');
+            cardDiv.className = 'card played-card';
+            cardDiv.textContent = cardToString(card);
+            cardDiv.style.margin = '5px';
+            table.appendChild(cardDiv);
+        }
+
+        // Update current trick suit
+        if (table && table.children.length === 1) {
+            currentTrickSuit = card.suit;
+        }
+
+        updatePlayableCards();
+    });
+
+    socket.on('trickWinner', ({ winner }) => {
+        console.log('Trick winner:', winner);
+        showMessage(`Player ${winner} wins the trick!`, 2000);
+
+        setTimeout(() => {
+            const table = document.getElementById('centerTable');
+            if (table) table.innerHTML = '';
+            currentTrickSuit = null;
+            updatePlayableCards();
+        }, 2000);
+    });
+
+    socket.on('gameOver', ({ scores }) => {
+        console.log('Game over:', scores);
+        updateScoreboard(scores, [0, 0]); // Assuming no bag info
+        showMessage('Game Over!');
+    });
+
+    socket.on('errorMessage', (message) => {
+        console.error('Server error:', message);
+        alert(`Error: ${message}`);
+    });
+
+    // UI Functions
+    function updateTurnIndicator(message) {
+        const indicator = document.getElementById('turnIndicator');
+        if (indicator) {
+            indicator.textContent = message || 'Waiting...';
+        }
     }
-  }
-  
 
-function cardToString(card) {
-  const ranks = { 11: 'J', 12: 'Q', 13: 'K', 14: 'A' };
-  return `${ranks[card.rank] || card.rank} ${card.suit[0].toUpperCase()}`;
-}
+    function updatePlayableCards() {
+        const handArea = document.getElementById('yourHand');
+        if (!handArea) return;
 
-function updateTurnUI() {
-  const turnDisplay = document.getElementById('turnDisplay');
-  turnDisplay.textContent = playerId === currentTurn ? "Your Turn" : "Waiting...";
+        const cards = handArea.querySelectorAll('.card');
+
+        cards.forEach((cardElement, index) => {
+            if (index >= myHand.length) return;
+
+            const card = myHand[index];
+            const isPlayable = checkCardPlayable(card);
+
+            cardElement.classList.remove('unplayable');
+            cardElement.onclick = null;
+
+            if (isPlayable) {
+                cardElement.style.cursor = 'pointer';
+                cardElement.onclick = () => playCard(card, index);
+            } else {
+                cardElement.classList.add('unplayable');
+                cardElement.style.cursor = 'not-allowed';
+            }
+        });
+    }
+
+    function checkCardPlayable(card) {
+        // If no suit led yet (first card of trick), any card is playable
+        if (!currentTrickSuit) return true;
+
+        // Check if player has at least one card of the current trick suit
+        const hasSuit = myHand.some(c => c.suit === currentTrickSuit);
+
+        if (hasSuit) {
+            // Can only play matching suit if you have it
+            return card.suit === currentTrickSuit;
+        } else {
+            // If you don't have that suit, any card is playable
+            return true;
+        }
+    }
+
+    function playCard(card, index) {
+        if (!roomId) return;
+
+        console.log('Playing card:', card);
+
+        // Remove from hand
+        myHand.splice(index, 1);
+
+        // Send to server
+        socket.emit('playCard', { roomId, card });
+
+        // Update display
+        renderHand(myHand, 'yourHand');
+        updatePlayableCards();
+    }
+
+    function submitBid() {
+        const bidInput = document.getElementById('bidInput');
+        const blindNilCheck = document.getElementById('blindNil');
+
+        if (!bidInput || !roomId) return;
+
+        const bid = parseInt(bidInput.value);
+        const blindNil = blindNilCheck ? blindNilCheck.checked : false;
+
+        if (isNaN(bid) || bid < 0 || bid > 13) {
+            alert('Please enter a valid bid (0-13)');
+            return;
+        }
+
+        console.log('Submitting bid:', { bid, blindNil });
+        socket.emit('bid', { roomId, bid, blindNil });
+
+        // Hide bidding interface
+        const biddingPhase = document.getElementById('biddingPhase');
+        if (biddingPhase) {
+            biddingPhase.classList.add('hidden');
+        }
+
+        // Clear input
+        bidInput.value = '';
+        if (blindNilCheck) blindNilCheck.checked = false;
+
+        updateTurnIndicator('Waiting for other players to bid...');
+    }
+
+    // Event listeners
+    document.addEventListener('DOMContentLoaded', function() {
+        const submitBidBtn = document.getElementById('submitBidBtn');
+        if (submitBidBtn) {
+            submitBidBtn.addEventListener('click', submitBid);
+        }
+    });
+
+    // Expose functions globally
+    window.submitBid = submitBid;
+
+    console.log('Multiplayer module loaded');
 }
