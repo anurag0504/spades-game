@@ -274,3 +274,14 @@ footer {
 .card:contains('♠'), .card:contains('♣') {
     color: #333;
 }
+/* Card hierarchy helper: displayed below the scoreboard in game.html */
+.card-hierarchy {
+    text-align: center;
+    margin-top: 8px;
+    font-size: 0.8rem;
+    color: #555;
+    background: #f2f2f2;
+    border-radius: 4px;
+    padding: 4px;
+  }
+  

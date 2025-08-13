@@ -1,4 +1,5 @@
 // singleplayer.js - Complete single player game implementation
+// singleplayer.js - Complete single player game implementation
 
 if (window.location.search.includes('mode=single')) {
     console.log('Starting single player mode...');
@@ -21,6 +22,11 @@ if (window.location.search.includes('mode=single')) {
     // Initialize game when page loads
     document.addEventListener('DOMContentLoaded', function() {
         initializeGame();
+
+        const submitBidBtn = document.getElementById('submitBidBtn');
+        if (submitBidBtn) {
+            submitBidBtn.addEventListener('click', submitBid);
+        }
     });
 
     function initializeGame() {
@@ -67,39 +73,45 @@ if (window.location.search.includes('mode=single')) {
         updateTurnIndicator('Your turn to bid');
     }
 
+    /**
+     * Submit the player's bid.
+     *
+     * This function parses the numeric value using Number() and verifies
+     * that it is an integer within the 0–13 range.  Using Number() avoids
+     * subtle parseInt() issues (e.g. empty strings or non‑integer values)
+     * which previously caused valid bids to be rejected.  Blind nil bids
+     * force the bid to 0.
+     */
     function submitBid() {
-        const bidInput = document.getElementById('bidInput');
+        const bidInput      = document.getElementById('bidInput');
         const blindNilCheck = document.getElementById('blindNil');
         if (!bidInput) return;
-        
-        const bidValue = bidInput.value.trim();
-        if (bidValue === '') {
-            alert('Please enter a bid (0-13)');
-            return;
-        }
-        
-        const bid = parseInt(bidValue);
+
+        // Trim and convert to number
+        const rawValue = bidInput.value.trim();
+        const bid      = Number(rawValue);
         const blindNil = blindNilCheck ? blindNilCheck.checked : false;
-        
-        if (isNaN(bid) || bid < 0 || bid > 13) {
-            alert('Please enter a valid bid (0-13)');
+
+        // Validate integer in range 0–13
+        if (!Number.isInteger(bid) || bid < 0 || bid > 13) {
+            alert('Please enter a valid bid (0–13)');
             return;
         }
-    
-        // Set human player's bid
+
+        // Set the human player's bid; blind nil forces 0
         gameState.bids[0] = blindNil ? 0 : bid;
         console.log(`Human bid: ${gameState.bids[0]}`);
-        
+
         // Hide bidding interface
         const biddingPhase = document.getElementById('biddingPhase');
         if (biddingPhase) {
             biddingPhase.classList.add('hidden');
         }
-    
-        // Clear bid input
+
+        // Clear controls
         bidInput.value = '';
         if (blindNilCheck) blindNilCheck.checked = false;
-        
+
         // Process AI bids
         processAIBids();
     }
@@ -189,17 +201,36 @@ if (window.location.search.includes('mode=single')) {
         });
     }
 
+    /**
+     * Determine if a card is playable by the human.
+     *
+     * Spades cannot be led until they are "broken" (someone has played
+     * a spade in a previous trick).  If this is the first card of the
+     * trick (no trickSuit yet), then leading a spade is only allowed if
+     * either spades have already been broken or the player has no
+     * non‑spade cards left.  Once a suit has been led, the player must
+     * follow suit if possible.  Otherwise any card may be played.
+     */
     function isCardPlayable(card) {
-        if (!gameState.trickSuit) return true; // First card of trick
-
         const humanHand = gameState.players[0];
-        const hasTrickSuit = humanHand.some(c => c.suit === gameState.trickSuit);
 
+        // First card of the trick (no lead suit yet)
+        if (!gameState.trickSuit) {
+            // If spades aren't broken yet, you cannot lead spades unless you have no other suit
+            if (!gameState.spadesBroken && card.suit === '♠') {
+                const hasNonSpade = humanHand.some(c => c.suit !== '♠');
+                if (hasNonSpade) return false;
+            }
+            return true;
+        }
+
+        // Otherwise, follow suit if you can
+        const hasTrickSuit = humanHand.some(c => c.suit === gameState.trickSuit);
         if (hasTrickSuit) {
             return card.suit === gameState.trickSuit;
         }
-
-        return true; // Can play any card if no trick suit in hand
+        // If you don't have the lead suit, any card is allowed
+        return true;
     }
 
     function playCard(playerIndex, cardIndex) {
@@ -423,13 +454,6 @@ if (window.location.search.includes('mode=single')) {
         startBiddingPhase();
     }
 
-    // Add event listener for bid submission
-    document.addEventListener('DOMContentLoaded', function() {
-        const submitBidBtn = document.getElementById('submitBidBtn');
-        if (submitBidBtn) {
-            submitBidBtn.addEventListener('click', submitBid);
-        }
-    });
 
     // Expose submitBid function globally for button onclick
     window.submitBid = submitBid;

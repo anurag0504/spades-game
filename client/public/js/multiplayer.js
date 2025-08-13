@@ -6,7 +6,11 @@ if (window.location.search.includes('mode=multi')) {
     
     const socket = io();
     let roomId, playerId;
+    // mySeat is the player's seat index (0–3).  Set after dealing cards.
+    let mySeat = null;
     let myHand = [], currentTurn = 0, currentTrickSuit = null;
+    // Track whether spades have been broken.  Spades cannot be led until broken.
+    let spadesBroken = false;
 
     // Get parameters from URL
     const urlParams = new URLSearchParams(window.location.search);
@@ -34,9 +38,23 @@ if (window.location.search.includes('mode=multi')) {
 
     // Socket event handlers
     socket.on('gameCreated', ({ roomId: id, playerId: pid }) => {
-        roomId = id;
+        roomId   = id;
         playerId = pid;
         console.log('Room created successfully:', { roomId, playerId });
+
+        // Update the URL with the actual room ID so it can be shared
+        try {
+            const params = new URLSearchParams({
+                mode: 'multi',
+                roomId: roomId,
+                name: playerName,
+                creator: 'false'
+            });
+            window.history.replaceState(null, '', 'game.html?' + params.toString());
+        } catch (err) {
+            console.warn('Failed to update URL with room ID:', err);
+        }
+
         if (typeof showMessage === 'function') {
             showMessage(`Room created: ${roomId}. Share this ID with others!`);
         } else {
@@ -69,6 +87,14 @@ if (window.location.search.includes('mode=multi')) {
                 showMessage('Room full! Starting game...', 2000);
             }
         }
+        // Enable or disable the start button for the creator
+        if (isCreator) {
+            const startBtn = document.getElementById('startGameBtn');
+            if (startBtn) {
+                // Disable if room is full
+                startBtn.disabled = humanPlayers.length >= 4;
+            }
+        }
     });
 
     socket.on('biddingStart', () => {
@@ -87,10 +113,22 @@ if (window.location.search.includes('mode=multi')) {
         }
     });
 
-    socket.on('dealCards', (hand) => {
-        console.log('Cards dealt:', hand);
+    socket.on('dealCards', (payload) => {
+        // Payload may be either an array (legacy) or an object with hand and seat
+        let hand, seat;
+        if (Array.isArray(payload)) {
+            hand = payload;
+            seat = null;
+        } else {
+            hand = payload.hand;
+            seat = payload.seat;
+        }
+        console.log('Cards dealt:', hand, 'seat:', seat);
         myHand = hand;
-        
+        if (seat !== undefined && seat !== null) {
+            mySeat = seat;
+        }
+
         // Sort hand
         if (typeof getRankValue === 'function') {
             myHand.sort((a, b) => {
@@ -100,7 +138,7 @@ if (window.location.search.includes('mode=multi')) {
                 return a.suit.localeCompare(b.suit);
             });
         }
-        
+
         if (typeof renderHand === 'function') {
             renderHand(myHand, 'yourHand');
         }
@@ -111,6 +149,8 @@ if (window.location.search.includes('mode=multi')) {
 
     socket.on('roundStarted', () => {
         console.log('Round started');
+        // Reset spadesBroken at the start of each round
+        spadesBroken = false;
         if (typeof showMessage === 'function') {
             showMessage('Round started!', 2000);
         }
@@ -130,9 +170,18 @@ if (window.location.search.includes('mode=multi')) {
         }
         
         if (table && table.children.length === 1) {
+            // First card of the trick sets the suit
             currentTrickSuit = card.suit;
         }
-        
+
+        // If a spade is played by any player, spades are now broken
+        if (card.suit === '♠') {
+            spadesBroken = true;
+        }
+
+        // Move to the next player's turn
+        currentTurn = (playerIndex + 1) % 4;
+
         updatePlayableCards();
     });
 
@@ -145,7 +194,9 @@ if (window.location.search.includes('mode=multi')) {
         setTimeout(() => {
             const table = document.getElementById('centerTable');
             if (table) table.innerHTML = '';
+            // Reset trick suit and assign the next turn to the winner
             currentTrickSuit = null;
+            currentTurn = winner;
             updatePlayableCards();
         }, 2000);
     });
@@ -178,17 +229,19 @@ if (window.location.search.includes('mode=multi')) {
         if (!handArea) return;
 
         const cards = handArea.querySelectorAll('.card');
-        
+
         cards.forEach((cardElement, index) => {
             if (index >= myHand.length) return;
-            
+
             const card = myHand[index];
-            const isPlayable = checkCardPlayable(card);
+            // Only the player whose turn it is may interact
+            const turnMatchesSeat = mySeat !== null && currentTurn === mySeat;
+            const isPlayable       = checkCardPlayable(card);
 
             cardElement.classList.remove('unplayable');
             cardElement.onclick = null;
-            
-            if (isPlayable) {
+
+            if (turnMatchesSeat && isPlayable) {
                 cardElement.style.cursor = 'pointer';
                 cardElement.onclick = () => playCard(card, index);
             } else {
@@ -199,18 +252,54 @@ if (window.location.search.includes('mode=multi')) {
     }
 
     function checkCardPlayable(card) {
-        if (!currentTrickSuit) return true;
+        /**
+         * Determine if a card is playable in the current trick.
+         *
+         * - If no suit has been led, the player is leading.  In this case,
+         *   they may not lead spades until spades have been broken unless
+         *   they have only spades left in their hand.
+         * - If a suit has been led, the player must follow that suit if
+         *   they have any cards of that suit.
+         */
+        // No suit led yet: you are leading the trick
+        if (!currentTrickSuit) {
+            // If spades not broken and the card is a spade, check if you have any non‑spade cards
+            if (!spadesBroken && card.suit === '♠') {
+                const hasNonSpade = myHand.some(c => c.suit !== '♠');
+                if (hasNonSpade) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        // A suit has been led: follow suit if possible
         const hasSuit = myHand.some(c => c.suit === currentTrickSuit);
-        return hasSuit ? card.suit === currentTrickSuit : true;
+        if (hasSuit) {
+            return card.suit === currentTrickSuit;
+        }
+        // If you don't have the lead suit, any card is allowed
+        return true;
     }
 
     function playCard(card, index) {
         if (!roomId) return;
-        
+
         console.log('Playing card:', card);
+        // Remove card from local hand
         myHand.splice(index, 1);
+
+        // If we play a spade, mark spades as broken
+        if (card.suit === '♠') {
+            spadesBroken = true;
+        }
+
+        // Emit play to server
         socket.emit('playCard', { roomId, card });
-        
+
+        // After playing, optimistically move to the next turn locally
+        currentTurn = (currentTurn + 1) % 4;
+
+        // Re-render the hand and update playable indicators
         if (typeof renderHand === 'function') {
             renderHand(myHand, 'yourHand');
         }
@@ -218,38 +307,54 @@ if (window.location.search.includes('mode=multi')) {
     }
 
     function submitBid() {
-        const bidInput = document.getElementById('bidInput');
+        const bidInput      = document.getElementById('bidInput');
         const blindNilCheck = document.getElementById('blindNil');
-        
+
         if (!bidInput || !roomId) return;
-        
-        const bid = parseInt(bidInput.value);
+
+        const rawValue = bidInput.value.trim();
+        const bid      = Number(rawValue);
         const blindNil = blindNilCheck ? blindNilCheck.checked : false;
-        
-        if (isNaN(bid) || bid < 0 || bid > 13) {
-            alert('Please enter a valid bid (0-13)');
+
+        if (!Number.isInteger(bid) || bid < 0 || bid > 13) {
+            alert('Please enter a valid bid (0–13)');
             return;
         }
-        
+
         console.log('Submitting bid:', { bid, blindNil });
         socket.emit('bid', { roomId, bid, blindNil });
-        
+
         const biddingPhase = document.getElementById('biddingPhase');
         if (biddingPhase) {
             biddingPhase.classList.add('hidden');
         }
-        
+
         bidInput.value = '';
         if (blindNilCheck) blindNilCheck.checked = false;
-        
+
         updateTurnIndicator('Waiting for other players to bid...');
     }
 
     // Event listeners
     document.addEventListener('DOMContentLoaded', function() {
+        // Attach bid submission handler
         const submitBidBtn = document.getElementById('submitBidBtn');
         if (submitBidBtn) {
             submitBidBtn.addEventListener('click', submitBid);
+        }
+
+        // If this client is the room creator, show the start button
+        const startBtn = document.getElementById('startGameBtn');
+        if (startBtn && isCreator) {
+            startBtn.classList.remove('hidden');
+            startBtn.disabled = false;
+            startBtn.addEventListener('click', function() {
+                if (roomId) {
+                    // Send start signal to server; disable the button to prevent repeats
+                    socket.emit('startGame', { roomId });
+                    startBtn.disabled = true;
+                }
+            });
         }
     });
 
